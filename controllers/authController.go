@@ -3,8 +3,10 @@ package controllers
 import (
 	"go-auth/database"
 	"go-auth/models"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v4"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -15,7 +17,7 @@ func Register(c *fiber.Ctx) error {
 		return err
 	}
 
-	password, _ := bcrypt.GenerateFromPassword([]byte(data["password"]), bcrypt.DefaultCost)
+	password, _ := bcrypt.GenerateFromPassword([]byte(data["password"]), 14)
 
 	user := models.User{
 		Name:     data["name"],
@@ -23,7 +25,13 @@ func Register(c *fiber.Ctx) error {
 		Password: password,
 	}
 	database.DB.Create(&user)
-	return c.JSON(user)
+
+	// token, exp, err := CreateJWTToken(user)
+	// if err != nil {
+	// 	return err
+	// }
+
+	return c.JSON(fiber.Map{"user": &user})
 }
 
 func Login(c *fiber.Ctx) error {
@@ -50,5 +58,34 @@ func Login(c *fiber.Ctx) error {
 		})
 	}
 
-	return c.JSON(&user.Name)
+	token, exp, err := CreateJWTToken(user)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(fiber.Map{"token": token, "exp": exp, "user": &user})
+}
+
+func CreateJWTToken(user models.User) (string, int64, error) {
+	exp := time.Now().Add(time.Minute * 30).Unix()
+	token := jwt.New(jwt.SigningMethodHS256)
+	claims := token.Claims.(jwt.MapClaims)
+	claims["user_id"] = user.ID
+	claims["exp"] = exp
+
+	t, err := token.SignedString([]byte("secret"))
+	if err != nil {
+		return "", 0, err
+	}
+
+	return t, exp, nil
+
+}
+
+func Private(c *fiber.Ctx) error {
+	return c.JSON(fiber.Map{"success": true, "path": "private"})
+}
+
+func Public(c *fiber.Ctx) error {
+	return c.JSON(fiber.Map{"success": true, "path": "public"})
 }
